@@ -1,0 +1,128 @@
+Goal:
+Recreate a full-stack personal finance app MVP with both frontend and backend built natively inside Replit. The backend will use Supabase as the database, and the frontend will be a React dashboard-based interface. Code must be clean, modular, and ready for later AI integration.
+
+App Overview
+
+Purpose: Track transactions, set budgets, and visualize spending trends.
+
+Architecture: Full-stack JS app with:
+
+Frontend: React + Vite
+
+Backend: Node.js (Express) + Supabase SDK
+
+Database: Supabase (tables: transactions, categories, budgets, goals)
+
+Core Features (Phase 1 MVP)
+
+Dashboard
+
+Display total spending, remaining budget, goal progress.
+
+Show alerts for overspending.
+
+Placeholder box for future AI insights.
+
+Transaction Management
+
+CRUD operations (add, edit, delete, view transactions).
+
+Filters: by category and date range.
+
+Sync with Supabase backend endpoints.
+
+Budget Setup
+
+Create, view, and edit monthly budgets.
+
+Progress bar per category (budget used vs. remaining).
+
+Reports & Analytics
+
+Charts for category breakdown, monthly trend, and savings goals.
+
+Dynamic chart.js or Recharts integration.
+
+Backend Requirements
+
+Framework: Express.js
+
+Use Supabase JS client for DB access.
+
+Endpoints:
+
+/transactions → CRUD
+
+/summary → Spending breakdown
+
+/budgets → Budget CRUD
+
+/goals → Track progress
+
+/export → Export data as CSV/JSON
+
+JWT authentication (use Supabase auth).
+
+Modular structure (routes, services, middleware, config).
+
+Environment variables: SUPABASE_URL, SUPABASE_KEY.
+
+Frontend Requirements
+
+React + TailwindCSS.
+
+Pages/Components:
+
+Dashboard.jsx
+
+Transactions.jsx
+
+Budgets.jsx
+
+Reports.jsx
+
+Include:
+
+State management (React Context or Redux if needed).
+
+API integration with backend endpoints.
+
+Recharts for data visualization.
+
+Comment each component clearly for future AI expansion.
+
+Additional Clauses
+
+Comment all core logic for AI explainability.
+
+Keep UI minimal but data-rich (dashboard layout, sidebar navigation).
+
+Add clear separation between UI state and data logic.
+
+Include placeholder function generateAIInsights() that will later connect to AI modules.
+
+Ensure codebase runs instantly in Replit (no external setup).
+
+Output Expected
+
+A working full-stack Replit project (frontend + backend + database setup).
+
+All environment variables and setup instructions visible in comments.
+
+Frontend connected to backend endpoints.
+
+Example demo data preloaded for testing.
+
+After Build
+
+When finished, summarize:
+
+Directory structure
+
+Key dependencies
+
+Endpoint list
+
+Frontend component map
+
+Integration notes (for Phase 2: AI module connection)
