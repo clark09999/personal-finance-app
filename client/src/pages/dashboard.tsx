@@ -10,20 +10,19 @@ import { Card } from "@/components/ui/card";
 import { IntervalToggle, type Interval } from "@/components/interval-toggle";
 import { EnhancedTrendChart } from "@/components/enhanced-trend-chart";
 
-// TODO: Remove mock data when connecting to backend
-const mockSpendingData = [
-  { category: 'Groceries', amount: 450.75, color: 'hsl(var(--chart-1))' },
-  { category: 'Entertainment', amount: 280.50, color: 'hsl(var(--chart-2))' },
-  { category: 'Transportation', amount: 420.00, color: 'hsl(var(--chart-3))' },
-  { category: 'Utilities', amount: 125.00, color: 'hsl(var(--chart-4))' },
-  { category: 'Shopping', amount: 350.25, color: 'hsl(var(--chart-5))' },
+const chartColors = [
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
 ];
 
 export default function Dashboard() {
   const [interval, setInterval] = useState<Interval>('monthly');
 
   // Fetch trend data based on selected interval
-  const { data: trendData, isLoading } = useQuery({
+  const { data: trendData, isLoading: isLoadingTrends } = useQuery({
     queryKey: ['/api/summary/trends', interval],
     queryFn: async () => {
       const response = await fetch(`/api/summary/trends?interval=${interval}`);
@@ -31,6 +30,23 @@ export default function Dashboard() {
         throw new Error('Failed to fetch trend data');
       }
       return response.json();
+    },
+  });
+
+  // Fetch spending summary data
+  const { data: spendingData, isLoading: isLoadingSpending } = useQuery({
+    queryKey: ['/api/summary/spending'],
+    queryFn: async () => {
+      const response = await fetch('/api/summary/spending');
+      if (!response.ok) {
+        throw new Error('Failed to fetch spending data');
+      }
+      const data = await response.json();
+      // Add colors to spending data
+      return data.map((item: { category: string; amount: number }, index: number) => ({
+        ...item,
+        color: chartColors[index % chartColors.length],
+      }));
     },
   });
 
@@ -95,11 +111,11 @@ export default function Dashboard() {
           <IntervalToggle interval={interval} onIntervalChange={setInterval} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SpendingChart data={mockSpendingData} />
+          <SpendingChart data={spendingData || []} isLoading={isLoadingSpending} />
           <EnhancedTrendChart 
             data={trendData || []} 
             interval={interval}
-            isLoading={isLoading}
+            isLoading={isLoadingTrends}
             title={`${interval.charAt(0).toUpperCase() + interval.slice(1)} Trends`}
           />
         </div>

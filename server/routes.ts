@@ -221,6 +221,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/summary/spending", async (req, res) => {
+    try {
+      const userId = "demo-user-1";
+      const summary = await storage.getSpendingSummary(userId);
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch spending summary" });
+    }
+  });
+
   /**
    * Trends endpoint - supports daily, weekly, and monthly aggregation
    * Query params:

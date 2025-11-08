@@ -10,10 +10,22 @@ interface SpendingData {
 interface SpendingChartProps {
   data: SpendingData[];
   title?: string;
+  isLoading?: boolean;
 }
 
-export function SpendingChart({ data, title = "Spending by Category" }: SpendingChartProps) {
+export function SpendingChart({ data, title = "Spending by Category", isLoading }: SpendingChartProps) {
   const total = data.reduce((sum, item) => sum + item.amount, 0);
+
+  if (isLoading) {
+    return (
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">{title}</h3>
+        <div className="flex items-center justify-center h-[300px]">
+          <p className="text-muted-foreground">Loading chart data...</p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-6">
