@@ -1,11 +1,14 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DollarSign, Wallet, TrendingUp, Target, AlertCircle } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { BudgetProgressCard } from "@/components/budget-progress-card";
 import { AIInsightsCard } from "@/components/ai-insights-card";
 import { SpendingChart } from "@/components/spending-chart";
-import { TrendChart } from "@/components/trend-chart";
 import { GoalCard } from "@/components/goal-card";
 import { Card } from "@/components/ui/card";
+import { IntervalToggle, type Interval } from "@/components/interval-toggle";
+import { EnhancedTrendChart } from "@/components/enhanced-trend-chart";
 
 // TODO: Remove mock data when connecting to backend
 const mockSpendingData = [
@@ -16,16 +19,21 @@ const mockSpendingData = [
   { category: 'Shopping', amount: 350.25, color: 'hsl(var(--chart-5))' },
 ];
 
-const mockTrendData = [
-  { month: 'Jul', income: 3500, expenses: 2800 },
-  { month: 'Aug', income: 3500, expenses: 3100 },
-  { month: 'Sep', income: 4000, expenses: 2900 },
-  { month: 'Oct', income: 3500, expenses: 3200 },
-  { month: 'Nov', income: 3750, expenses: 2950 },
-  { month: 'Dec', income: 4200, expenses: 3400 },
-];
-
 export default function Dashboard() {
+  const [interval, setInterval] = useState<Interval>('monthly');
+
+  // Fetch trend data based on selected interval
+  const { data: trendData, isLoading } = useQuery({
+    queryKey: ['/api/summary/trends', interval],
+    queryFn: async () => {
+      const response = await fetch(`/api/summary/trends?interval=${interval}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch trend data');
+      }
+      return response.json();
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -80,10 +88,21 @@ export default function Dashboard() {
       {/* AI Insights */}
       <AIInsightsCard />
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SpendingChart data={mockSpendingData} />
-        <TrendChart data={mockTrendData} />
+      {/* Charts Grid with Interval Toggle */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Financial Analysis</h2>
+          <IntervalToggle interval={interval} onIntervalChange={setInterval} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SpendingChart data={mockSpendingData} />
+          <EnhancedTrendChart 
+            data={trendData || []} 
+            interval={interval}
+            isLoading={isLoading}
+            title={`${interval.charAt(0).toUpperCase() + interval.slice(1)} Trends`}
+          />
+        </div>
       </div>
 
       {/* Budget Progress */}
