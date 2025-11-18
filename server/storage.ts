@@ -31,6 +31,8 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  deleteUser(id: string): Promise<boolean>;
+  updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
 
   // Transaction methods
   getTransactions(userId: string): Promise<Transaction[]>;
@@ -61,6 +63,9 @@ export interface IStorage {
   // Summary and analysis methods
   getTrends(userId: string, interval: 'daily' | 'weekly' | 'monthly', limit?: number): Promise<TrendDataPoint[]>;
   getSpendingSummary(userId: string): Promise<SpendingSummary[]>;
+  // AI insights
+  saveInsight(data: { userId: string; insights: string; suggestions: string; flags: string; periodStart: string; periodEnd: string; generatedAt: string; }): Promise<any>;
+  getLatestInsight(userId: string): Promise<any | null>;
 }
 
 export class MemStorage implements IStorage {
@@ -81,6 +86,31 @@ export class MemStorage implements IStorage {
     this.initializeDemoData();
   }
 
+  // ---- AI insights in-memory storage ----
+  private aiInsightsStore: Array<{
+    id: string;
+    userId: string;
+    insights: string;
+    suggestions: string;
+    flags: string;
+    periodStart: string;
+    periodEnd: string;
+    generatedAt: string;
+    createdAt: Date;
+  }> = [];
+
+  async saveInsight(data: { userId: string; insights: string; suggestions: string; flags: string; periodStart: string; periodEnd: string; generatedAt: string; }) {
+    const id = randomUUID();
+    const item = { id, ...data, createdAt: new Date() };
+    this.aiInsightsStore.push(item as any);
+    return item;
+  }
+
+  async getLatestInsight(userId: string) {
+    const list = this.aiInsightsStore.filter(i => i.userId === userId).sort((a,b)=> new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+    return list[0] || null;
+  }
+
   // User methods
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -94,9 +124,32 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    // Ensure fields required by User are present with sensible defaults so
+    // the in-memory storage implements the same shape as the production one.
+    const user: User = {
+      id,
+      username: (insertUser as any).username,
+      password: (insertUser as any).password,
+      mfaEnabled: (insertUser as any).mfaEnabled ?? false,
+      mfaSecret: (insertUser as any).mfaSecret ?? null,
+      tokenVersion: (insertUser as any).tokenVersion ?? 0,
+      // Optional fields like name may be present on InsertUser
+      ...(insertUser as any).name ? { name: (insertUser as any).name } : {},
+    } as unknown as User;
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+    const existing = this.users.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...data } as User;
+    this.users.set(id, updated);
+    return updated;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    return this.users.delete(id);
   }
 
   // Transaction methods

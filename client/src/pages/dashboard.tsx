@@ -1,175 +1,177 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { DollarSign, Wallet, TrendingUp, Target, AlertCircle } from "lucide-react";
-import { StatCard } from "@/components/stat-card";
-import { BudgetProgressCard } from "@/components/budget-progress-card";
-import { AIInsightsCard } from "@/components/ai-insights-card";
-import { SpendingChart } from "@/components/spending-chart";
-import { GoalCard } from "@/components/goal-card";
-import { Card } from "@/components/ui/card";
-import { IntervalToggle, type Interval } from "@/components/interval-toggle";
-import { EnhancedTrendChart } from "@/components/enhanced-trend-chart";
+import React, { useEffect, useState } from 'react';
+import api from '../api';
+import { Summary, Transaction } from '../types/api';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
+import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import AIInsights from '@/components/AIInsights';
 
-const chartColors = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-];
+const COLORS = ['#10B981', '#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6'];
 
 export default function Dashboard() {
-  const [interval, setInterval] = useState<Interval>('monthly');
+  const [range, setRange] = useState<'week'|'month'|'year'>('week');
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch trend data based on selected interval
-  const { data: trendData, isLoading: isLoadingTrends } = useQuery({
-    queryKey: ['/api/summary/trends', interval],
-    queryFn: async () => {
-      const response = await fetch(`/api/summary/trends?interval=${interval}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch trend data');
-      }
-      return response.json();
-    },
-  });
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        // compute dates
+        const now = new Date();
+        let start: Date;
+        if (range === 'week') { start = new Date(now); start.setDate(now.getDate() - 6); }
+        else if (range === 'month') { start = new Date(now); start.setMonth(now.getMonth() - 1); }
+        else { start = new Date(now); start.setFullYear(now.getFullYear() - 1); }
 
-  // Fetch spending summary data
-  const { data: spendingData, isLoading: isLoadingSpending } = useQuery({
-    queryKey: ['/api/summary/spending'],
-    queryFn: async () => {
-      const response = await fetch('/api/summary/spending');
-      if (!response.ok) {
-        throw new Error('Failed to fetch spending data');
-      }
-      const data = await response.json();
-      // Add colors to spending data
-      return data.map((item: { category: string; amount: number }, index: number) => ({
-        ...item,
-        color: chartColors[index % chartColors.length],
-      }));
-    },
-  });
+        const start_date = start.toISOString();
+        const end_date = now.toISOString();
+
+        const [s, txs] = await Promise.all([api.getSummary({ start_date, end_date }), api.getTransactions({ limit: 100, start_date, end_date })]);
+        if ((s as any).message) throw s;
+        if ((txs as any).message) throw txs;
+        if (!mounted) return;
+        setSummary(s as Summary);
+        setTransactions(txs as Transaction[]);
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load dashboard');
+      } finally { if (mounted) setLoading(false); }
+    }
+    load();
+    return () => { mounted = false; };
+  }, [range]);
+
+  const trendData = React.useMemo(() => {
+    if (!transactions) return [];
+    // group by date (simple)
+    const map = new Map<string, { date: string; income: number; expense: number }>();
+    transactions.slice().reverse().forEach(t => {
+      const day = new Date(t.date).toISOString().split('T')[0];
+      const item = map.get(day) ?? { date: day, income: 0, expense: 0 };
+      const amt = parseFloat(t.amount);
+      if (t.type === 'income') item.income += amt; else item.expense += amt;
+      map.set(day, item);
+    });
+    return Array.from(map.values()).slice(-7);
+  }, [transactions]);
+
+  const pieData = React.useMemo(() => {
+    if (!summary) return [];
+    return summary.category_breakdown.map((c, i) => ({ name: c.category, value: parseFloat(c.amount), color: COLORS[i % COLORS.length] }));
+  }, [summary]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Your financial overview at a glance
-        </p>
-      </div>
-
-      {/* Overspending Alert */}
-      <Card className="p-4 border-destructive/50 bg-destructive/5">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+    <div className="p-4 bg-gray-50 min-h-screen">
+      <div className="max-w-7xl mx-auto">
+        <header className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold">FinanceFlow Dashboard</h1>
           <div>
-            <h4 className="font-medium text-sm">Budget Alert</h4>
-            <p className="text-sm text-muted-foreground">
-              You've exceeded your Transportation budget by $70.00 this month.
-            </p>
+            <select value={range} onChange={(e) => setRange(e.target.value as any)} className="px-3 py-2 rounded-lg border">
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+              <option value="year">Year</option>
+            </select>
           </div>
-        </div>
-      </Card>
+        </header>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Spending"
-          value="$3,245.50"
-          subtitle="This month"
-          icon={DollarSign}
-          trend={{ value: "12% from last month", isPositive: false }}
-        />
-        <StatCard
-          title="Budget Remaining"
-          value="$1,754.50"
-          subtitle="35% of monthly budget"
-          icon={Wallet}
-          trend={{ value: "On track", isPositive: true }}
-        />
-        <StatCard
-          title="Savings"
-          value="$8,420.00"
-          icon={TrendingUp}
-        />
-        <StatCard
-          title="Goals Progress"
-          value="67%"
-          subtitle="2 of 3 goals on track"
-          icon={Target}
-        />
-      </div>
+        {loading && <div className="p-4">Loading...</div>}
+        {error && <div className="p-4 text-red-600">{error}</div>}
 
-      {/* AI Insights */}
-      <AIInsightsCard />
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-4 flex items-center">
+            <DollarSign className="w-8 h-8 text-green-600 mr-3" />
+            <div>
+              <div className="text-sm text-gray-500">Total Income</div>
+              <div className="text-xl font-bold">${summary ? Number(summary.totalIncome).toFixed(2) : '0.00'}</div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center">
+            <TrendingDown className="w-8 h-8 text-red-600 mr-3" />
+            <div>
+              <div className="text-sm text-gray-500">Total Expenses</div>
+              <div className="text-xl font-bold">${summary ? Number(summary.totalExpenses).toFixed(2) : '0.00'}</div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center">
+            <TrendingUp className="w-8 h-8 text-blue-600 mr-3" />
+            <div>
+              <div className="text-sm text-gray-500">Net Balance</div>
+              <div className="text-xl font-bold">${summary ? Number(summary.netBalance).toFixed(2) : '0.00'}</div>
+            </div>
+          </div>
+        </section>
 
-      {/* Charts Grid with Interval Toggle */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Financial Analysis</h2>
-          <IntervalToggle interval={interval} onIntervalChange={setInterval} />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SpendingChart data={spendingData || []} isLoading={isLoadingSpending} />
-          <EnhancedTrendChart 
-            data={trendData || []} 
-            interval={interval}
-            isLoading={isLoadingTrends}
-            title={`${interval.charAt(0).toUpperCase() + interval.slice(1)} Trends`}
-          />
-        </div>
-      </div>
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <div className="lg:col-span-2 bg-white rounded-lg shadow p-4">
+            <h3 className="text-lg font-medium mb-2">Trend (7 days)</h3>
+            <div style={{ height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData}>
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="income" stroke="#10B981" />
+                  <Line type="monotone" dataKey="expense" stroke="#EF4444" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-      {/* Budget Progress */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Budget Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <BudgetProgressCard
-            category="Groceries"
-            spent={450.75}
-            total={600}
-            icon="🛒"
-          />
-          <BudgetProgressCard
-            category="Entertainment"
-            spent={280.50}
-            total={300}
-            icon="🎬"
-          />
-          <BudgetProgressCard
-            category="Transportation"
-            spent={420.00}
-            total={350}
-            icon="🚗"
-          />
-          <BudgetProgressCard
-            category="Utilities"
-            spent={125.00}
-            total={200}
-            icon="💡"
-          />
-        </div>
-      </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="text-lg font-medium mb-2">Spending by Category</h3>
+            <div style={{ height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={80} label>
+                    {pieData.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
 
-      {/* Goals */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Savings Goals</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <GoalCard
-            name="Emergency Fund"
-            current={6500}
-            target={10000}
-            deadline="2024-12-31"
-          />
-          <GoalCard
-            name="Vacation Fund"
-            current={1200}
-            target={3000}
-            deadline="2024-06-30"
-          />
+        <section className="bg-white rounded-lg shadow p-4 mb-6">
+          <h3 className="text-lg font-medium mb-2">Category Breakdown</h3>
+          <div style={{ height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={(summary?.category_breakdown || []).map(c => ({ name: c.category, amount: Number(c.amount), count: c.transaction_count }))}>
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="amount" fill="#3B82F6" />
+                <Bar dataKey="count" fill="#F59E0B" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-lg shadow p-4">
+          <h3 className="text-lg font-medium mb-2">Recent Transactions</h3>
+          <ul>
+            {transactions.slice(0,10).map(t => (
+              <li key={t.id} className="flex justify-between py-2 border-b">
+                <div>
+                  <div className="font-medium">{t.description}</div>
+                  <div className="text-sm text-gray-500">{t.category} • {new Date(t.date).toLocaleDateString()}</div>
+                </div>
+                <div className={`${t.type==='income'?'text-green-600':'text-red-600'} font-semibold`}>${Number(t.amount).toFixed(2)}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* AI Insights - ADD THIS */}
+        <div className="mt-8">
+          <AIInsights />
         </div>
       </div>
     </div>
   );
 }
+
