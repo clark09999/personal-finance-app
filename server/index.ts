@@ -98,11 +98,17 @@ registerRoutes(app, { requireAuth: true })
   .then((s) => {
     _registeredServer = s;
     routesRegistered = true;
-    console.log('[index] routes registered');
+    console.log('[index] ✅ routes registered successfully');
   })
-  .catch((err) => {
-    // Log but don't crash immediately; tests may provide their own mocks.
-    console.error('Error registering routes at module init', err);
+  .catch((err: any) => {
+    // CRITICAL: Log error so we can see what's failing
+    console.error('[index] ❌ FATAL ERROR registering routes at module init:');
+    console.error('[index] Error message:', (err as Error)?.message || err);
+    console.error('[index] Error stack:', (err as Error)?.stack || 'N/A');
+    console.error('[index] Full error:', JSON.stringify(err, null, 2));
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    }
   });
 
 // Attach global error handler at app-level so tests importing `app` directly
@@ -111,8 +117,24 @@ registerRoutes(app, { requireAuth: true })
 app.use(errorHandler);
 
 export async function createServer() {
-  const server = routesRegistered && _registeredServer ? _registeredServer : await registerRoutes(app);
+  console.log('[createServer] 🚀 Starting createServer()...');
+  
+  // Ensure routes are registered (may already be done at module init)
+  console.log('[createServer] Checking if routes registered...');
+  if (!routesRegistered) {
+    console.log('[createServer] Routes not registered, registering now...');
+    try {
+      await registerRoutes(app, { requireAuth: true });
+      console.log('[createServer] ✅ Routes registered');
+    } catch (err) {
+      console.error('[createServer] ❌ Failed to register routes:', err);
+      throw err;
+    }
+  } else {
+    console.log('[createServer] Routes already registered (from module init)');
+  }
 
+  console.log('[createServer] Setting up error handler...');
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -120,31 +142,111 @@ export async function createServer() {
     res.status(status).json({ message });
     throw err;
   });
+  console.log('[createServer] ✅ Error handler set up');
+
+  console.log(`[createServer] NODE_ENV=${process.env.NODE_ENV}`);
 
   // Only setup Vite in development. In production we serve static files.
   // Critically, do NOT import `./vite` when running under NODE_ENV=test because
   // that file imports Vite/esbuild at top-level which can break the test runtime.
   if (process.env.NODE_ENV === 'development') {
-    const { setupVite } = await import('./vite');
-    await setupVite(app, server);
+    console.log('[createServer] 🚀 Setting up Vite (development mode)...');
+    try {
+      const { setupVite } = await import('./vite');
+      // Use a proper HTTP server for Vite middleware
+      const { createServer: createHttpServer } = await import('http');
+      const server = createHttpServer(app);
+      await setupVite(app, server);
+      console.log('[createServer] ✅ Vite setup complete');
+      return server;
+    } catch (err) {
+      console.error('[createServer] ❌ Failed to set up Vite:', err);
+      throw err;
+    }
   } else if (process.env.NODE_ENV === 'production') {
-    const { serveStatic } = await import('./vite');
-    serveStatic(app);
+    console.log('[createServer] 🚀 Setting up static file serving (production mode)...');
+    try {
+      const { serveStatic } = await import('./vite');
+      serveStatic(app);
+      console.log('[createServer] ✅ Static file serving set up');
+    } catch (err) {
+      console.error('[createServer] ❌ Failed to set up static file serving:', err);
+      throw err;
+    }
+  } else {
+    console.log(`[createServer] ⚠️ NODE_ENV is "${process.env.NODE_ENV}", not dev or prod`);
   }
 
-  return server;
+  // For production or test, just return the app's built-in server wrapper
+  // Create and return a proper HTTP server
+  console.log('[createServer] 🚀 Creating HTTP server...');
+  const { createServer: createHttpServer } = await import('http');
+  const httpServer = createHttpServer(app);
+  console.log('[createServer] ✅ HTTP server created');
+  console.log('[createServer] ✅ createServer() completed successfully');
+  return httpServer;
 }
 
 // If not running under test, start listening immediately
 if (process.env.NODE_ENV !== 'test') {
   (async () => {
-    const server = await createServer();
-    const port = parseInt(process.env.PORT || '3000', 10);
-    server.listen({
-      port,
-      host: "localhost",
-    }, () => {
-      log(`serving on port ${port}`);
-    });
+    try {
+      console.log('[index] 🚀 Starting server initialization...');
+      
+      console.log('[index] Creating HTTP server...');
+      const server = await createServer();
+      console.log('[index] ✅ HTTP server created');
+      
+      const port = parseInt(process.env.PORT || '3000', 10);
+      console.log(`[index] 🚀 Attempting to listen on port ${port}...`);
+      
+      // Timeout protection: if listen doesn't complete in 10 seconds, force exit
+      const listenTimeout = setTimeout(() => {
+        console.error(`[index] ❌ TIMEOUT: listen callback never fired after 10 seconds!`);
+        process.exit(1);
+      }, 10000);
+
+      server.listen({
+        port,
+        host: "localhost",
+      }, () => {
+        clearTimeout(listenTimeout);
+        log(`serving on port ${port}`);
+        console.log(`[index] ✅ Server is ACTUALLY listening (listen callback fired)`);
+      });
+
+      // Log errors from the server itself
+      server.on('error', (err) => {
+        console.error('[index] ❌ Server error event:', err);
+        process.exit(1);
+      });
+
+      // Handle graceful shutdown
+      process.on('SIGINT', () => {
+        log('Shutting down...');
+        server.close(() => {
+          log('Server closed');
+          process.exit(0);
+        });
+        // Force exit if close takes > 5 seconds
+        setTimeout(() => {
+          console.error('[index] ❌ Forced shutdown after 5 seconds');
+          process.exit(1);
+        }, 5000);
+      });
+
+      // Log any unhandled promise rejections
+      process.on('unhandledRejection', (reason, promise) => {
+        console.error('[index] ❌ Unhandled Promise Rejection:', reason);
+        console.error('[index] Promise:', promise);
+      });
+
+    } catch (err) {
+      console.error('[index] ❌ FATAL ERROR in server startup:');
+      console.error('[index] Error message:', (err as Error)?.message || err);
+      console.error('[index] Error stack:', (err as Error)?.stack || 'N/A');
+      console.error('[index] Full error:', JSON.stringify(err, null, 2));
+      process.exit(1);
+    }
   })();
 }
